@@ -2,26 +2,75 @@
 #include "Channel.hpp"//因为真实调用需要channel里面的函数
 
 //Poller 不应该直接执行回调。执行回调属于 EventLoop 的职责
+void Poller::updateEpollCtl(Status& status, int fd,std::uint32_t events_Target, Channel& channel)
+{
+    struct epoll_event ev;
+    ev.events = events_Target;
+    ev.data.fd = fd;
+
+    if(status == Status::ToAdd){
+        if(epoll_ctl(
+            epoll_fd_,
+            EPOLL_CTL_ADD,
+            fd,
+            &ev)==-1){
+            std::cerr<<"EPOLL_CTL_ADD failed\n";
+            return;
+            }
+        channels[fd] = &channel;
+    }
+
+    if(status == Status::ToWrite){
+        if(epoll_ctl(
+            epoll_fd_,
+            EPOLL_CTL_MOD,
+            fd,
+            &ev)==-1){
+            std::cerr<<"EPOLL_CTL_MOD failed\n";
+            return;
+            }
+    }
+
+    if(status == Status::TodisableWrite){
+        if(epoll_ctl(
+            epoll_fd_,
+            EPOLL_CTL_MOD,
+            fd,
+            &ev)==-1){
+            std::cerr<<"EPOLL_CTL_MOD failed\n";
+            return;
+            }
+    }
+
+    if(status == Status::ToQuit){
+        if(epoll_ctl(
+            epoll_fd_,
+            EPOLL_CTL_DEL,
+            fd,
+            &ev)==-1){
+            std::cerr<<"EPOLL_CTL_DEL failed\n";
+            return;
+            }
+        auto it = channels.find(fd);
+
+        if(it != channels.end()){
+            channels.erase(it);
+
+        } 
+    }
+}
 
 void Poller::updateChannel(Channel* channel){
-    epoll_event cev;
-            int fd = channel->fd();
-            cev.data.fd=fd;
-            cev.events=EPOLLIN|EPOLLET;//只接受读事件,意味着有内容的时候会通知，不代表不能够发送内容
 
-            if(epoll_ctl(
-                epoll_fd_,
-                EPOLL_CTL_ADD,
-                fd,
-                &cev)==-1)
-            {
-                //close(fd);
-                //新添fd与对应的回调函数
-                std::cerr<<"EPOLL_CTL_ADD failed\n";
-                return;
-            }
+    std::uint32_t events_Target=channel->events();//获取channel想要的events
+    std::uint32_t events_Real=channel->revents();//获取channel想要的events
+    Status status= channel->status();
+    int fd = channel->fd();
 
-            channels[fd]=channel;
+       
+        updateEpollCtl(status, fd, events_Target, *channel);
+        //channel->setRevents(events_Target);不需要，只能有epoll_wait来实现
+        
 }
 
 void Poller::removeChannel(Channel* channel){

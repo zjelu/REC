@@ -18,7 +18,6 @@ std::optional<std::string> Connection::pop_line(){
         );
 
         read_offset=pos+1;
-
         return line;
 }
 
@@ -65,7 +64,6 @@ ReadResult Connection::readData(){
 
  FlushResult Connection::flushOutput(){
      {
-
         while (write_offset < outbuf.size()) {
             ssize_t result = send(
             client_fd_,
@@ -106,13 +104,14 @@ ReadResult Connection::readData(){
 pop_line()：inbuf → 完整消息
 messageCallback：完整消息 → 上层业务*/
 
+//handleread函数是传给channel来执行功能的
 void Connection::handleRead() {
     const ReadResult result = readData();
 
     if (result == ReadResult::PeerClosed ||
         result == ReadResult::Error) {
         if (close_callback_) {
-            close_callback_(*this);
+            close_callback_(*this);//requestConnection()触发，标记为将要删除
         }
         return;
     }
@@ -145,7 +144,7 @@ void Connection::Send(std::string_view data) {
 
     if (result == FlushResult::Error) {
         if (close_callback_) {
-            close_callback_(*this);
+            close_callback_(*this);//requestConnection()触发，标记为将要删除
         }
     }
 }

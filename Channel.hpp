@@ -6,6 +6,14 @@
 //Channel.hpp 使用前向声明，阻止循环引用
 class Eventloop;
 
+enum Status{
+    ToAdd,
+    ToWrite,
+    TodisableWrite,
+    ToQuit
+};
+
+
 class Channel{
 
     public:
@@ -15,6 +23,7 @@ class Channel{
         fd_(fd),
         events_(events){
             //把channel负责加入epoll_ctl（不需要了，已经有update函数了）
+            //而connection创建的时候自动创建一个client_channel，然后手动命令channel调用update函数
             //loop_.updateChannel(this);//编译存疑，毕竟不算构造完全
         };
 
@@ -42,21 +51,27 @@ class Channel{
         std::uint32_t revents() const noexcept{
             return revents_;
         }
+        
+        Status status() const noexcept{
+            return stat;
+        }
 
         void enableReading();
         void enableWriting();
         void disableWriting();
         void disableAll();
+        void quit();
 
 
     private:
         void update();
         
+        bool is_quit = false;
         Eventloop* loop_;//// 借用，不拥有
         int fd_;  //有listenfd,也有clientfd,但是channel不需要知道
         std::uint32_t events_;//我关心是什么，他只要知道这个事件可读还是可写
         std::uint32_t revents_;//真实的events
-
+        Status stat = Status::ToAdd;
 
         std::function<void()> read_callback_;
         std::function<void()> write_callback_;

@@ -1,6 +1,6 @@
 #pragma once
 #include "Poller.hpp"
-
+#include <cassert>
 
 class Eventloop{
 
@@ -22,9 +22,16 @@ class Eventloop{
         return poller_.getfd();
     }
 
+    void runPendingTasks();
+    void queueTask(std::function<void()> task);
+    
     private:
+    
     Poller poller_;
     ChannelList active_channels_;
     bool quit_ = false;
+    std::vector<std::function<void()>> pending_tasks_;//一排以后要执行的任务
+
+    
 
 };

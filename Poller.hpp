@@ -34,6 +34,7 @@ class Poller{
     //channel中拥有fd
     void updateChannel(Channel* channel);
     void removeChannel(Channel* channel);
+    void updateEpollCtl(Status& status, int fd,std::uint32_t events_Target, Channel& channel);
 
     int getfd(){
         return epoll_fd_;

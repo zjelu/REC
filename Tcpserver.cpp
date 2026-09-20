@@ -15,9 +15,9 @@ void Tcpserver::newConnection(int client_fd) {
     );
 
     connection->setCloseCallback(
-        [this](Connection& connection) {
-            removeConnection(connection);
-        }
+    [this](Connection& connection) {
+        requestConnection(connection);
+    }
     );
 
     connections.emplace(
@@ -106,4 +106,14 @@ void Tcpserver::removeConnection(
         }
     );
 
+}
+
+void Tcpserver::removeConnectionByFd(int fd)
+{
+    auto it = connections.find(fd);
+    if (it == connections.end()) {
+        return;
+    }
+
+    removeConnection(*it->second);
 }

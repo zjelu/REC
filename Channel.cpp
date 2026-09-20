@@ -16,6 +16,7 @@ void Channel::setErrorCallback(std::function<void()>func){
   error_callback_=func;
 };
 
+//但是关闭channle要再handelevent中进行
 void Channel::handleEvent(
 ) {
     if (revents_ & EPOLLERR) {
@@ -28,7 +29,6 @@ void Channel::handleEvent(
         if (close_callback_) {
             close_callback_();
         }
-
         return;
     }
 
@@ -46,26 +46,47 @@ void Channel::handleEvent(
     }
 }
 
+//既然要实现灵活多变的话，那么我选择让EPOLL查看channel希望获得的events,然后改变内核状态
 void Channel::update(){
     std::cerr<<"to update channel\n";
+    assert(is_quit=false);
     loop_->updateChannel(this);
 }
 
+void Channel::quit(){
+    std::cerr<<"to quit channel\n";
+    stat = Status::ToQuit;
+    is_quit = true;
+    update();
+}
+
+
+
+//一般来说只有创建初始的时候才会enableReading一次
 void Channel::enableReading()
 {
     events_ |= EPOLLIN;
+     stat = Status::ToAdd;
+     assert(is_quit=false);
     update();
+    
 }
 
 void Channel::enableWriting()
 {
     events_ |= EPOLLOUT;
+     stat = Status::ToWrite;
+    assert(is_quit=false);
+
     update();
 }
 
 void Channel::disableWriting()
 {
     events_ &= ~EPOLLOUT;
+    stat = Status::TodisableWrite;
+    assert(is_quit=false);
+
     update();
 }
 

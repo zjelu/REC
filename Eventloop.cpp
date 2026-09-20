@@ -10,7 +10,9 @@ void Eventloop::loop() {
 
         for (Channel* channel : active_channels_) {
             channel->handleEvent();
+            //这时候再彻底的removeconnection吗？
         }
+        runPendingTasks();
     }
 }
 
@@ -29,3 +31,15 @@ void Eventloop::removeChannel(Channel* channel){
         poller_.removeChannel(channel);
 
 }
+
+void Eventloop::runPendingTasks(){
+    for (auto& task : pending_tasks_) {
+        task();
+    }
+
+    pending_tasks_.clear();
+}
+
+void Eventloop::queueTask(std::function<void()> task){
+    pending_tasks_.push_back(std::move(task));
+   }
