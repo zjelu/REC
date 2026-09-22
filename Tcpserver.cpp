@@ -18,6 +18,9 @@ void Tcpserver::newConnection(int client_fd) {
     [this](Connection& connection) {
         requestConnection(connection);
     }
+    //这里的关闭回调设计了requestConnection
+    //到时候handleread()触发关闭回调的时候机会自动触发该函数
+    //然后handleEvent结束的时候就会
     );
 
     connections.emplace(

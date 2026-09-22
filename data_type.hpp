@@ -4,7 +4,8 @@
 enum class ReadResult {
     Ready,
     PeerClosed,
-    Error
+    Error,
+    OutOfSize
 };
 
 enum class FlushResult {

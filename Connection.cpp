@@ -25,7 +25,7 @@ std::optional<std::string> Connection::pop_line(){
 而是增加两个负责状态协调的成员函数：*/
 ReadResult Connection::readData(){
      char buf[4096];
-        while(true){
+        while(!ishigh){
             const ssize_t n = recv(client_fd_,buf,sizeof(buf),0);
             if(n>0){
                 inbuf.append(buf,static_cast<std::size_t>(n));
@@ -60,10 +60,13 @@ ReadResult Connection::readData(){
             return ReadResult::Error; 
             }
         }    
+        return ReadResult::OutOfSize;
 }
 
  FlushResult Connection::flushOutput(){
      {
+       
+
         while (write_offset < outbuf.size()) {
             ssize_t result = send(
             client_fd_,
@@ -106,11 +109,15 @@ messageCallback：完整消息 → 上层业务*/
 
 //handleread函数是传给channel来执行功能的
 void Connection::handleRead() {
+    if(will_delete) return;
     const ReadResult result = readData();
+
+    if(result == ReadResult::OutOfSize) return;
 
     if (result == ReadResult::PeerClosed ||
         result == ReadResult::Error) {
         if (close_callback_) {
+            std::cerr<<"peerclosed or read error in handleRead\n";
             close_callback_(*this);//requestConnection()触发，标记为将要删除
         }
         return;
@@ -120,19 +127,44 @@ void Connection::handleRead() {
         if (message_callback_) {
             message_callback_(*this, *message);
         }
+
+        if (will_delete) {
+            return;
+        }
     }
 }
 
 //主动发送路径
 void Connection::Send(std::string_view data) {
+    if(will_delete) return;
+
     const bool was_empty = outbuf.empty();
+
+     //计算出待发送的内容
+    constexpr std::size_t compact_threshold = 64 * 1024;
+
+    //如果已经发送了不少的内容，那就删除他们，但是避免频繁操作
+    if (write_offset >= compact_threshold &&
+        write_offset >= outbuf.size() - write_offset) {
+        outbuf.erase(0, write_offset);
+        write_offset = 0;
+    }
 
     outbuf.append(data.data(), data.size());
 
     // 原来已经有数据等待发送，
     // 说明 Connection 正在等待 EPOLLOUT。
-    if (!was_empty) {
+    if (!was_empty || (outbuf.size()-write_offset)> maxsize) {
+        std::cerr<<"too large outbuf size\n";
+        requestClose();
         return;
+    }
+
+    if(outbuf.size()-write_offset > highLevel){
+        ishigh = true;
+    }
+    else{
+        ishigh = false;
     }
 
     const FlushResult result = flushOutput();
@@ -144,6 +176,7 @@ void Connection::Send(std::string_view data) {
 
     if (result == FlushResult::Error) {
         if (close_callback_) {
+            std::cerr<<"FlushResult error\n";
             close_callback_(*this);//requestConnection()触发，标记为将要删除
         }
     }
@@ -151,6 +184,8 @@ void Connection::Send(std::string_view data) {
 
 //EPOLLOUT 续写路径
 void Connection::handleWrite() {
+    if(will_delete) return;
+    
     const FlushResult result = flushOutput();
 
     if (result == FlushResult::Done) {
@@ -160,6 +195,7 @@ void Connection::handleWrite() {
 
     if (result == FlushResult::Error) {
         if (close_callback_) {
+             std::cerr<<"FlushResult error\n";
             close_callback_(*this);
         }
     }

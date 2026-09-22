@@ -33,11 +33,14 @@ void Eventloop::removeChannel(Channel* channel){
 }
 
 void Eventloop::runPendingTasks(){
-    for (auto& task : pending_tasks_) {
+    std::vector<std::function<void()>> tasks;
+    tasks.swap(pending_tasks_);
+
+    for (auto& task : tasks) {
         task();
     }
 
-    pending_tasks_.clear();
+    //pending_tasks_.clear();
 }
 
 void Eventloop::queueTask(std::function<void()> task){

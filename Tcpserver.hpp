@@ -25,7 +25,8 @@ class Tcpserver{
 
     void requestConnection(Connection& connection)
     {
-        connection.WillDelete();
+
+        //connection.WillDelete();没有必要
         connection.channel().quit();
 
         int fd = connection.fd();
