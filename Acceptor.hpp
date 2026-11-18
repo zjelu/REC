@@ -29,10 +29,13 @@ class Acceptor{
     
         //设置为非阻塞
     if(setnonblocking(listen_fd) == -1){
-        std::cerr<< "setnonblocking failed"<<std::endl;
+        //std::cerr<< "setnonblocking failed"<<std::endl;
         return;//程序退出了
     }
 
+    //handleAccept会执行new_connection_callback_
+    //而handleAccept作为listen_channel_的readcallback函数
+    //早就在创建的时候就塞入loop的poller中了
         listen_channel_.setReadCallback(
             [this]{
                 handleAccept(loop_);//构造的时候就setReadCallback，为了将来的调用做准备
@@ -46,9 +49,10 @@ class Acceptor{
     //通过listen_fd来监听，然后创建对应的client_fd
     //不负责维护epoll与connections的功能
 
-
     int  getNonblockClientfd();
     int  setnonblocking(int fd);
+
+    //我们给NewConnectionCallback塞入了newconnection()
     void setNewConnectionCallback(
             NewConnectionCallback callback)
         {

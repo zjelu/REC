@@ -1,6 +1,23 @@
 #include "Poller.hpp"
 #include "Channel.hpp"//因为真实调用需要channel里面的函数
 
+
+Poller::Poller()
+    : epoll_fd_(::epoll_create1(EPOLL_CLOEXEC)) {
+    if (epoll_fd_ == -1) {
+        throw std::system_error(
+            errno,
+            std::generic_category(),
+            "epoll_create1"
+        );
+    }
+}
+
+Poller::~Poller() {
+    ::close(epoll_fd_);
+}
+
+
 //Poller 不应该直接执行回调。执行回调属于 EventLoop 的职责
 void Poller::updateEpollCtl(Status& status, int fd,std::uint32_t events_Target, Channel& channel)
 {
@@ -17,6 +34,10 @@ void Poller::updateEpollCtl(Status& status, int fd,std::uint32_t events_Target, 
             std::cerr<<"EPOLL_CTL_ADD failed\n";
             return;
             }
+        /*std::cerr << "[ADD success] epoll=" << epoll_fd_
+          << " fd=" << fd
+          << " events=" << events_Target
+          << '\n';*/
         channels[fd] = &channel;
     }
 
@@ -67,7 +88,6 @@ void Poller::updateChannel(Channel* channel){
     Status status= channel->status();
     int fd = channel->fd();
 
-       
         updateEpollCtl(status, fd, events_Target, *channel);
         //channel->setRevents(events_Target);不需要，只能有epoll_wait来实现
         
@@ -81,7 +101,7 @@ void Poller::removeChannel(Channel* channel){
                 fd,
                 nullptr
             );
-            std::cerr<<"EPOLL_CTL_DEL successfully\n";
+            //std::cerr<<"EPOLL_CTL_DEL successfully\n";
 
             auto it = channels.find(fd);
             if(it == channels.end()) {
@@ -104,6 +124,10 @@ void Poller::poll(int timeout_ms,
             static_cast<int>(ready_events.size()),
             -1// 第一版先用短超时
         );
+
+        /*std::cerr << "[Poll returned] epoll=" << epoll_fd_
+          << " count=" << ready_count
+          << '\n';*/
 
         if(ready_count ==-1){
             if(errno == EINTR) return;

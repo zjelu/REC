@@ -6,6 +6,10 @@
 #include <iostream>
 #include <vector>
 #include <functional>
+#include <sys/epoll.h>
+#include <unistd.h>
+#include <cerrno>
+#include <system_error>
 
 enum Method{
     ADD,
@@ -22,8 +26,12 @@ using ChannelList =
 
 class Poller{
     public:
-    explicit Poller(int epoll_fd):
-    epoll_fd_(epoll_fd){}
+    Poller();   // 创建 epoll fd
+    ~Poller();  // 关闭 epoll fd
+
+
+     Poller(const Poller&) = delete;
+    Poller& operator=(const Poller&) = delete;
 
     //void updatePoller(int fd, Method method, Channel& channel);
     

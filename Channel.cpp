@@ -19,16 +19,23 @@ void Channel::setErrorCallback(std::function<void()>func){
 //但是关闭channle要再handelevent中进行
 void Channel::handleEvent(
 ) {
+    /*std::cerr << "[Event] fd=" << fd_
+          << " revents=" << revents_
+          << " has_read=" << static_cast<bool>(read_callback_)
+          << " has_close=" << static_cast<bool>(close_callback_)
+          << " has_error=" << static_cast<bool>(error_callback_)
+          << '\n';*/
+
     if (revents_ & EPOLLERR) {
         if (error_callback_) {
             error_callback_();
         }
     }
 
+    //猜测这条路径没有被调用
     if (revents_ & EPOLLHUP) {
         if (close_callback_) {
-            
-            std::cerr<<"revents EPOLLHUP \n";
+            //std::cerr<<"revents EPOLLHUP \n";
             close_callback_();
         }
         return;
@@ -37,6 +44,9 @@ void Channel::handleEvent(
     if (revents_ &
         (EPOLLIN | EPOLLPRI | EPOLLRDHUP)) {
         if (read_callback_) {
+            /*std::cerr << "[Channel read] fd=" << fd_
+                  << " revents=" << revents_
+                  << '\n';*/
             read_callback_();
         }
     }
@@ -50,13 +60,12 @@ void Channel::handleEvent(
 
 //既然要实现灵活多变的话，那么我选择让EPOLL查看channel希望获得的events,然后改变内核状态
 void Channel::update(){
-    std::cerr<<"to update channel\n";
-    
+    //std::cerr<<"to update channel\n";
     loop_->updateChannel(this);
 }
 
 void Channel::quit(){
-    std::cerr<<"to quit channel\n";
+    //std::cerr<<"to quit channel\n";
     stat = Status::ToQuit;
     is_quit = true;
     update();

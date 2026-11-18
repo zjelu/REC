@@ -25,7 +25,7 @@ std::optional<std::string> Connection::pop_line(){
 而是增加两个负责状态协调的成员函数：*/
 ReadResult Connection::readData(){
      char buf[4096];
-        while(!ishigh){
+        while(true){
             const ssize_t n = recv(client_fd_,buf,sizeof(buf),0);
             if(n>0){
                 inbuf.append(buf,static_cast<std::size_t>(n));
@@ -33,40 +33,49 @@ ReadResult Connection::readData(){
             }
             if(n==0){
                 //close(client_fd_);
-                std::cerr
+                /*std::cerr
                 << "peer closed, client_fd_="
                 << client_fd_
-                << '\n';
+                << '\n';*/
 
                 return ReadResult::PeerClosed;
             }
+
             if(errno == EINTR){
+            /*std::cerr
+            << "EINTR, client_fd_="
+            << client_fd_
+            << '\n';*/
                 continue;
             }
-
             if(errno == EAGAIN || errno == EWOULDBLOCK){
-
+                /*std::cerr
+            << "EAGAIN, client_fd_="
+            << client_fd_
+            << '\n';*/
                 return ReadResult::Ready;
             }
 
             if (errno != EAGAIN &&
                 errno != EWOULDBLOCK &&
                 errno != EINTR) {
-                std::cerr
+                /*std::cerr
                     << "read error, client_fd_="
                     << client_fd_
-                    << '\n';
+                    << '\n';*/
 
             return ReadResult::Error; 
             }
         }    
+        /*std::cerr
+            << "OutOfSize, client_fd_="
+            << client_fd_
+            << '\n';*/
         return ReadResult::OutOfSize;
 }
 
  FlushResult Connection::flushOutput(){
      {
-       
-
         while (write_offset < outbuf.size()) {
             ssize_t result = send(
             client_fd_,
@@ -74,10 +83,20 @@ ReadResult Connection::readData(){
             static_cast<size_t>(outbuf.size() - write_offset),
             MSG_NOSIGNAL
         );
+        
 
         if (result > 0) {
-        write_offset += static_cast<std::size_t>(result);
+            write_offset += static_cast<std::size_t>(result);
+
+            const auto pending = outbuf.size() - write_offset;
+            if (!ishigh && pending >= highLevel) {
+                ishigh = true;
+            } else if (ishigh && pending <= lowLevel) {
+                ishigh = false;
+                readData();
+            }
             continue;
+
         }
 
         if (result < 0 && errno == EINTR) {
@@ -86,8 +105,6 @@ ReadResult Connection::readData(){
 
         if (result < 0 &&
             (errno == EAGAIN || errno == EWOULDBLOCK)) {
-
-            //outbuf.erase(0, sent);//性能存疑
             return FlushResult::WouldBlock;
         }
 
@@ -97,41 +114,34 @@ ReadResult Connection::readData(){
 
         outbuf.clear();
         write_offset = 0;
+        ishigh = false;
 
         return FlushResult::Done;
-       // printf("[WRITE] client_fd_=%d  total=%zu", client_fd_,  conn.output_buffer.size());
         }
     }
 
-/*readData()：socket → inbuf
-pop_line()：inbuf → 完整消息
-messageCallback：完整消息 → 上层业务*/
-
 //handleread函数是传给channel来执行功能的
 void Connection::handleRead() {
-    if(will_delete) return;
+    /*std::cerr << "[Connection read] fd=" << client_fd_
+              << " will_delete=" << will_delete
+              << " ishigh=" << ishigh
+              << '\n';*/
+
+    if(will_delete || ishigh) return;
+
+    //std::cout<<"to read\n";
     const ReadResult result = readData();
 
     if(result == ReadResult::OutOfSize) return;
 
     if (result == ReadResult::PeerClosed ||
         result == ReadResult::Error) {
-        if (close_callback_) {
-            std::cerr<<"peerclosed or read error in handleRead\n";
-            close_callback_(*this);//requestConnection()触发，标记为将要删除
-        }
+         requestClose();
         return;
     }
 
-    while (auto message = pop_line()) {
-        if (message_callback_) {
-            message_callback_(*this, *message);
-        }
-
-        if (will_delete) {
-            return;
-        }
-    }
+    processmessage();
+   
 }
 
 //主动发送路径
@@ -154,31 +164,25 @@ void Connection::Send(std::string_view data) {
 
     // 原来已经有数据等待发送，
     // 说明 Connection 正在等待 EPOLLOUT。
-    if (!was_empty || (outbuf.size()-write_offset)> maxsize) {
+    if ((outbuf.size()-write_offset)> maxsize) {
         std::cerr<<"too large outbuf size\n";
         requestClose();
         return;
     }
 
-    if(outbuf.size()-write_offset > highLevel){
+    if ((outbuf.size()-write_offset) >= highLevel) {
         ishigh = true;
-    }
-    else{
-        ishigh = false;
     }
 
     const FlushResult result = flushOutput();
-
     if (result == FlushResult::WouldBlock) {
         client_channel_.enableWriting();
         return;
     }
 
     if (result == FlushResult::Error) {
-        if (close_callback_) {
-            std::cerr<<"FlushResult error\n";
-            close_callback_(*this);//requestConnection()触发，标记为将要删除
-        }
+        std::cerr<<"FlushResult error\n";
+            requestClose();
     }
 }
 
@@ -186,6 +190,7 @@ void Connection::Send(std::string_view data) {
 void Connection::handleWrite() {
     if(will_delete) return;
     
+    const bool was_high = ishigh;
     const FlushResult result = flushOutput();
 
     if (result == FlushResult::Done) {
@@ -194,14 +199,32 @@ void Connection::handleWrite() {
     }
 
     if (result == FlushResult::Error) {
-        if (close_callback_) {
              std::cerr<<"FlushResult error\n";
-            close_callback_(*this);
-        }
+            //close_callback_(*this);
+             requestClose();
     }
 
     // WouldBlock：什么都不做，
     // 继续保持对 EPOLLOUT 的关注。
+    if (was_high && !ishigh) {
+        handleRead();
+    }
+}
+
+void Connection::processmessage(){
+
+     while (!will_delete && !ishigh) {
+        auto message = pop_line();
+         if (!message) break;
+
+        if (message_callback_) {
+            message_callback_(*this, *message);
+        }
+
+        if (will_delete) {
+            return;
+        }
+    }
 }
 
 void Connection::setMessageCallback(MessageCallback func){

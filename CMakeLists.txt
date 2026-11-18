@@ -3,38 +3,81 @@ project(ReactorTest LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(reactor
+find_package(Threads REQUIRED)
+
+option(REACTOR_ENABLE_SANITIZERS "Enable ASan and UBSan" OFF)
+
+# 为自己的目标统一配置警告和运行时检查。
+function(configure_reactor_target target)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wshadow
+        )
+
+        if(REACTOR_ENABLE_SANITIZERS)
+            target_compile_options(${target} PRIVATE
+                -fsanitize=address,undefined
+                -fno-omit-frame-pointer
+            )
+
+            target_link_options(${target} PUBLIC
+                -fsanitize=address,undefined
+            )
+        endif()
+    endif()
+endfunction()
+
+# 公共 Reactor 实现。
+add_library(reactor STATIC
     Channel.cpp
     Poller.cpp
     Eventloop.cpp
-    Tcpserver.cpp
     Acceptor.cpp
     Connection.cpp
 )
 
 target_include_directories(reactor PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
-add_executable(reactor_test
-    main.cpp
+target_link_libraries(reactor PUBLIC Threads::Threads)
+configure_reactor_target(reactor)
+
+# 原单线程 Server。
+add_library(reactor_server_single STATIC
+    Tcpserver.cc
 )
 
-add_executable(reactor_test2
-    main2.cpp
-)
-target_link_libraries(reactor_test PRIVATE reactor)
-target_link_libraries(
-    reactor_test2
-    PRIVATE reactor
+target_link_libraries(reactor_server_single PUBLIC reactor)
+configure_reactor_target(reactor_server_single)
+
+# 新多线程 Server。暂时不需要新版 main。
+add_library(reactor_server_thread STATIC
+    Tcpserver_thread.cc
+    worker.cc
 )
 
-# 启用 CTest
+target_link_libraries(reactor_server_thread PUBLIC reactor)
+configure_reactor_target(reactor_server_thread)
+
+# 多线程服务入口
+add_executable(reactor_test2 main2.cpp)
+
+target_link_libraries(reactor_test2 PRIVATE
+    reactor_server_thread
+)
+
+configure_reactor_target(reactor_test2)
+
+# GoogleTest。
 enable_testing()
 
-# 引入已有的 GoogleTest 源码
-# 本地这份 GoogleTest 的 CMakeLists.txt 需要这个版本变量
 set(GOOGLETEST_VERSION 1.17.0)
 
 add_subdirectory(
@@ -42,7 +85,6 @@ add_subdirectory(
     "${CMAKE_CURRENT_BINARY_DIR}/googletest"
 )
 
-# 测试程序：需要先创建这个源文件
 add_executable(reactor_unit_tests
     tests/Channel_test.cpp
     tests/Eventloop_test.cpp
@@ -54,40 +96,7 @@ target_link_libraries(reactor_unit_tests PRIVATE
     GTest::gtest_main
 )
 
-# 自动将 TEST / TEST_F 注册到 CTest
+configure_reactor_target(reactor_unit_tests)
+
 include(GoogleTest)
 gtest_discover_tests(reactor_unit_tests)
-
-#开启编译警告
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    foreach(target reactor reactor_unit_tests)
-        target_compile_options(${target} PRIVATE
-            -Wall
-            -Wextra
-            -Wpedantic
-            -Wconversion
-            -Wshadow
-        )
-    endforeach()
-endif()
-
-#开启 ASan 和 UBSan。 它们在运行测试时检查内存错误和部分未定义行为
-option(REACTOR_ENABLE_SANITIZERS "Enable ASan and UBSan" OFF)
-
-if(REACTOR_ENABLE_SANITIZERS
-   AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(reactor PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-    )
-
-    # 让链接 reactor 的可执行文件带上 sanitizer 运行库
-    target_link_options(reactor PUBLIC
-        -fsanitize=address,undefined
-    )
-
-    target_compile_options(reactor_unit_tests PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-    )
-endif()

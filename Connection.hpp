@@ -32,6 +32,8 @@ class Connection{
     explicit Connection(Eventloop* loop,int fd):
         client_fd_(fd),
        client_channel_(fd, EPOLLET, *loop){
+
+        std::cerr << "[New connection] fd=" << fd << '\n';
             client_channel_.setReadCallback(
                 [this] {
                     handleRead();
@@ -47,11 +49,7 @@ class Connection{
             client_channel_.setCloseCallback([this] {
                requestClose();
             });
-            /*client_channel_.setCloseCallback(
-                [this] {
-                    quit();
-                }
-            );*/
+         
             client_channel_.enableReading();
         }
 
@@ -97,8 +95,13 @@ class Connection{
     }
 }
 
+    //不读取就结束的时候没有调用析构函数，猜测是关闭路径只写了handleread
     ~Connection() {
     if (client_fd_ >= 0) {
+        /* << "关闭连接"
+            << " fd=" << client_fd_
+            << std::endl;*/
+
         ::close(client_fd_);
         }
     }
@@ -114,6 +117,8 @@ class Connection{
 
     ReadResult readData();
     FlushResult flushOutput();
+    void processmessage();
+
 
 
     int client_fd_;

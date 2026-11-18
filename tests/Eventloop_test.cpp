@@ -12,22 +12,19 @@
 class EventloopTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        epoll_fd_ = ::epoll_create1(EPOLL_CLOEXEC);
-        ASSERT_GE(epoll_fd_, 0);
+        //epoll_fd_ = ::epoll_create1(EPOLL_CLOEXEC);
+        //ASSERT_GE(epoll_fd_, 0);
 
-        Poller poller(epoll_fd_);
-        loop_ = std::make_unique<Eventloop>(poller);
+        Poller poller;
+        loop_ = std::make_unique<Eventloop>();
     }
 
     void TearDown() override {
         loop_.reset();
 
-        if (epoll_fd_ >= 0) {
-            ::close(epoll_fd_);
-        }
     }
 
-    int epoll_fd_ = -1;
+    //int epoll_fd_ = -1;
     std::unique_ptr<Eventloop> loop_;
 };
 

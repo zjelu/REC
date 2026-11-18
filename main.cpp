@@ -44,8 +44,8 @@ int main(){
             return;
         }
 
-        std::cout << "eventfd callback, value="
-                  << value << '\n';
+       /* std::cout << "eventfd callback, value="
+                  << value << '\n';*/
 
         loop.quit();
     });

@@ -34,11 +34,10 @@ TEST(ConnectionTest, ReceivesOneLine) {
 class ConnectionTest : public:: testing::Test{
     public:
         void SetUp() override{
-            epoll_fd_ = ::epoll_create1(EPOLL_CLOEXEC);
-        ASSERT_GE(epoll_fd_, 0);
+        //ASSERT_GE(epoll_fd_, 0);
 
-        Poller poller(epoll_fd_);
-        loop_ = std::make_unique<Eventloop>(poller);
+        Poller poller;
+        loop_ = std::make_unique<Eventloop>();
 
         int sockets[2];
         ASSERT_EQ(
@@ -76,11 +75,8 @@ class ConnectionTest : public:: testing::Test{
             ::close(peer_fd_);
         }
 
-        loop_.reset();//没有这个API？
-
-        if (epoll_fd_ >= 0) {
-            ::close(epoll_fd_);
-        }
+        loop_.reset();
+      
     }
 
      void dispatchRead() {
@@ -89,7 +85,6 @@ class ConnectionTest : public:: testing::Test{
     }
 
     protected:
-    int epoll_fd_ = -1;
     int peer_fd_ = -1;
 
     std::unique_ptr<Eventloop> loop_;
